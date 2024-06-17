@@ -1,0 +1,88 @@
+import argparse
+import ipaddress
+import sys
+from scapy.all import IP, ICMP, ARP, sniff, sr1
+
+def decouverte_active(target_ip, export_file=None):
+    print(f"Découverte active en cours pour l'adresse suivante :{target_ip}...")
+
+    icmp_request = IP(dst=str(target_ip))/ICMP()
+    response = sr1(icmp_request, timeout=2, verbose=False)
+
+    if response:
+        print(f"Hôte {target_ip} trouvé")
+    else:
+        print(f"Aucun hôte trouvé pour l'adresse suivante :{target_ip}")
+
+    if export_file:
+        with open(export_file, 'w') as file:
+            file.write("".join(target_ip))
+            print(f"Résultats exportés dans {export_file}")
+
+def decouverte_passive(target_ip, export_file=None):
+    def arp_callback(packet):
+        if packet.haslayer(ARP):
+            if packet[ARP].psrc == target_ip:
+                print(f"Hôte {target_ip} trouvé, avec l'addresse MAC suivante : {packet[ARP].hwsrc}")
+                sys.exit(0)
+
+    print(f"Découverte passive en cours pour l'adresse suivante : {target_ip}")
+
+    try:
+        sniff(filter=f"arp and host {target_ip}", prn=arp_callback, store=0)
+    except KeyboardInterrupt:
+        print("Découverte passive arrêter.")
+
+    if export_file:
+        with open(export_file, 'w') as file:
+            file.write("".join(target_ip))
+            print(f"Résultats exportés dans {export_file}")
+
+
+def decouverte_reseau(network, export_file=None):
+    print(f"Découverte du réseau {network}")
+
+    network_obj = ipaddress.IPv4Network(network, strict=False)
+    hosts_found = []
+
+    for ip in network_obj.hosts():
+
+        icmp_request = IP(dst=str(ip))/ICMP()
+        response = sr1(icmp_request, timeout=2, verbose=False)
+
+        if response:
+            hosts_found.append(str(ip))
+            print(f"Hôte {ip} trouvé sur ce réseau")
+        else:
+            print(f"Aucun hôte trouvé pour l'adresse suivante : {ip}")
+
+    if export_file:
+        with open(export_file, 'w') as file:
+            file.write("\n".join(hosts_found))
+            print(f"Résultats exportés dans {export_file}")
+
+    print("---------------------------------------------------")
+    print("Hôtes présent sur le réseau :")
+    for i in hosts_found:
+    		print(i)
+
+def main():
+    parser = argparse.ArgumentParser(description="Programme de découverte d'hôtes sur un réseau.")
+    parser.add_argument("-a", "--active", metavar="IP", help="Découverte active en utilisant ICMP (-a XX.XX.XX.XX)")
+    parser.add_argument("-p", "--passive", metavar="IP", help="Découverte passive en écoutant le trafic ARP (-p XX.XX.XX.XX)")
+    parser.add_argument("-t", "--test", metavar="NETWORK", help="Tester la présence d'hôtes dans un réseau avec ICMP (-t XX.XX.XX.XX/X)")
+    parser.add_argument("-x", "--export", metavar="FILE", help="")
+
+    args = parser.parse_args()
+
+    if args.active:
+        decouverte_active(args.active, args.export)
+    elif args.passive:
+        decouverte_passive(args.passive, args.export)
+    elif args.test:
+        decouverte_reseau(args.test, args.export)
+    else:
+        print("Aucune option spécifiée. Veuillez entrer : -h ou --h pour afficher l'aide.")
+
+if __name__ == "__main__":
+    main()
